@@ -1,0 +1,440 @@
+var hpa=ee.FeatureCollection('users/swei46/shapefiles/kshpa')
+// var grid=ee.FeatureCollection('users/swei46/shapefiles/grid6km')
+var grid=ee.FeatureCollection('users/swei46/shapefiles/grid_GEE_6km')
+
+// var gmd_dstrict=ee.FeatureCollection('projects/neon-partition-327200/assets/Groundwater_Districts')//.filter(ee.Filter.eq('GMD_ID',5))
+
+
+                  
+var nlcd_list=['2006','2006','2008','2008','2008','2011','2011','2011']  
+var nlcd_year=['2005','2006','2007','2008','2009','2010','2011','2012']
+
+
+var cultivated_land=ee.Image([])
+for (var i=0; i<= 7; i++){
+var nlcd_raw= ee.ImageCollection('USGS/NLCD_RELEASES/2016_REL')
+.filter(ee.Filter.eq('system:index', nlcd_list[i])).toBands()
+.select(nlcd_list[i]+'_landcover')
+
+
+var nlcd_mask=nlcd_raw.mask(nlcd_raw.eq(82)).divide(82).rename(nlcd_year[i]+'_landcover')
+
+ var cultivated_land=cultivated_land.addBands(nlcd_mask)
+
+}
+
+
+
+
+for (var yr=13; yr<= 20; yr++){
+var cdl_raw = ee.ImageCollection('USDA/NASS/CDL')
+                  .filter(ee.Filter.date('20'+yr+'-01-01', '20'+yr+'-12-31'))
+                   .toBands()
+                   .select('20'+yr+'_cultivated')
+                   
+var cdl_mask=cdl_raw.mask(cdl_raw.neq(1)).divide(2).rename('20'+yr+'_landcover')
+
+
+
+ var cultivated_land=cultivated_land.addBands(cdl_mask)
+}
+
+print('cult_land',cultivated_land)
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////landsat 8
+
+// Assign a common name to the sensor-specific bands.
+var LC8_BANDS = ['B2',   'B3',    'B4',  'B5',  'B6',    'B7']; //Landsat 8
+var LC7_BANDS = ['B1',   'B2',    'B3',  'B4',  'B5',    'B7']; //Landsat 7
+var LC5_BANDS = ['B1',   'B2',    'B3',  'B4',  'B5',    'B7']; //Llandsat 5
+var STD_NAMES = ['blue', 'green', 'red', 'nir', 'swir1','swir2'];
+
+var l8 = ee.ImageCollection("LANDSAT/LC08/C01/T1").select(LC8_BANDS, STD_NAMES)// Landsat 8
+
+var l7 = ee.ImageCollection("LANDSAT/LE07/C01/T1").select(LC7_BANDS, STD_NAMES) //Landsat 7
+
+var l5 =ee.ImageCollection("LANDSAT/LT05/C01/T1").select(LC5_BANDS, STD_NAMES) //Landsat 5
+
+
+var lall = ee.ImageCollection(l5.merge(l7).merge(l8)).filterDate('2006-01-01', '2020-12-31').filterBounds(hpa);
+
+// print('merged',lall)
+
+var AGTB = function(image) {
+ return image
+  // NDVI nir red
+  .addBands(image.normalizedDifference(['nir','red']).rename('NDVI'))
+  // Greeness index (NIR/green) 
+  .addBands(image.select('nir').divide(image.select('green')).rename('GI'))
+  // Normalized Difference Water Index (nir and swir b5, Gao 1996)
+  .addBands(image.normalizedDifference(['nir','swir1']).rename('NDWI'))
+};
+
+
+// var AGTB = function(image) {
+// return image
+//   // NDVI nir red
+//   .addBands(image.normalizedDifference(['B4','B3']).rename('NDVI'))
+//   // Greeness index (NIR/green) 
+//   .addBands(image.select('B4').divide(image.select('B2')).rename('GI'))
+//   // Normalized Difference Water Index (nir and swir b5, Gao 1996)
+//   .addBands(image.normalizedDifference(['B4','B5']).rename('NDWI'))
+//   // EVI
+//   .addBands(image.expression(
+//     '2.5 * ((NIR * s - RED * s) / (NIR * s + 6 * RED * s - 7.5 * BLUE * s + 1))', {
+//       'NIR': image.select('B4'),
+//       'RED': image.select('B3'),
+//       'BLUE': image.select('B1'),
+//       //green B2
+//       //swir b5
+//       's'  : 0.0001 // band scale factor for SR product
+//     }).rename('EVI'))
+// };
+
+
+var cornf=function (image) {
+     var scl = image.select('cropland'); 
+  var shadow = scl.eq(1); 
+  return image.updateMask(shadow).rename('sb').divide(1).clip(hpa)}; 
+
+
+var sbf=function (image) {
+     var scl = image.select('cropland'); 
+  var shadow = scl.eq(5); 
+  return image.updateMask(shadow).rename('sb').divide(5).clip(hpa)}; 
+  
+
+var alfff=function (image) {
+     var scl = image.select('cropland'); 
+  var shadow = scl.eq(36); 
+  return image.updateMask(shadow).rename('sb').divide(36).clip(hpa)}; 
+  
+  
+ var sghf=function (image) {
+     var scl = image.select('cropland'); 
+  var shadow = scl.eq(4); 
+  return image.updateMask(shadow).rename('sb').divide(4).clip(hpa)}; 
+  
+var wwf=function (image) {
+     var scl = image.select('cropland'); 
+  var shadow = scl.eq(24); 
+  return image.updateMask(shadow).rename('sb').divide(24).clip(hpa)}; 
+
+/////////////////////////////////////////////////////////////////////////////densarea
+var mapFolder =  'projects/h2yo/IrrigationMaps/AIM/AIM-HPA/';
+var imageName = 'AIM-HPA_Deines_etal_RSE_v01_extend_1984-2020';
+/////////////////////////////////////////////
+var ptScale =30
+var irridat=ee.Image([])
+var denisareadat=ee.Image([])
+var etdat=ee.Image([])
+var prdat=ee.Image([])
+var smdat=ee.Image([])
+var temdat=ee.Image([])
+var vpdat=ee.Image([])
+//////////////
+var corndat=ee.Image([])
+var wwdat=ee.Image([])
+var sbdat=ee.Image([])
+var sghdat=ee.Image([])
+var alffdat=ee.Image([])
+//////////////
+var gidat=ee.Image([])
+var ndwidat=ee.Image([])
+var ndvidat=ee.Image([])
+
+
+
+var filtercop=function (image) {
+
+  var shadow = cultivated_land.select(year[i]+'_landcover').eq(1); 
+  return image.updateMask(shadow);
+};
+
+var ks_year=['6','7','8','9','10','11','12','13','14','15','16','17','18','19','20']
+
+var year=['2006','2007','2008','2009','2010','2011','2012','2013','2014','2015','2016','2017','2018','2019','2020']
+///////////////////////////////////////////////////////////////////////////////
+for (var i=0;i<=14;i=i+1){
+///study time
+var fall = ee.Filter.date(year[i]+'-05-01', year[i]+'-08-31');
+///crop mask 2012 use 2013 cdl, 02-11 use nlcd
+
+var cropland_mask=cultivated_land.select(year[i]+'_landcover')
+
+
+///////////////////////////////////////////////////////////////                  
+var cropb=ee.ImageCollection('USDA/NASS/CDL')
+                  .filter(ee.Filter.date(year[i]+'-01-01',year[i]+'-12-31')).toBands().select(0)
+                  // .select('cropland')//.toBands()
+print(cropb)
+///////////////////////////////////////////////////////////////
+
+var mdet= ee.ImageCollection("MODIS/006/MOD16A2")
+.filter(fall).select('ET').map(filtercop).sum().clip(hpa)
+.multiply(0.0125).rename('mdetmean');
+
+var theMaps = ee.Image(mapFolder + imageName).clip(hpa)
+.select('b'+year[i])
+var denisarea= theMaps.updateMask(theMaps.neq(0))
+                  
+
+ var vpd=ee.ImageCollection("IDAHO_EPSCOR/GRIDMET")
+.filter(fall)
+.map(filtercop).select('vpd').sum().clip(hpa)   
+
+    
+//pr
+var pr = ee.ImageCollection("IDAHO_EPSCOR/GRIDMET")
+.filter(fall)
+.map(filtercop).select('pr').sum().clip(hpa)
+
+
+//tem
+
+var tem = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET').filter(fall)
+                  .map(filtercop).select('tmmx').mean().subtract(273.15).clip(hpa)
+    
+///
+
+
+/////landsat 8
+var gimean=lall.filter(fall)
+                  .map(AGTB).map(filtercop).select(['GI']).mean().clip(hpa)
+                  
+var ndwimean=lall.filter(fall)
+                  .map(AGTB).map(filtercop).select(['NDWI']).mean().clip(hpa)
+
+var ndvimean=lall.filter(fall)
+                  .map(AGTB).map(filtercop).select(['NDVI']).mean().clip(hpa)
+
+///////////////////////////////////////////////////////////////////////////////////
+
+
+var corn=cropb.mask(cropb.eq(1)).rename('corn').clip(hpa);
+
+  //soybean
+
+  var sb=cropb.mask(cropb.eq(5)).rename('sb').divide(5).clip(hpa);
+  
+//alfafa  
+
+  
+var alff=cropb.mask(cropb.eq(36)).rename('alff').divide(36).clip(hpa);
+
+  ///sorghum
+ 
+  
+var sgh=cropb.mask(cropb.eq(4)).rename('sghf').divide(4).clip(hpa);
+ 
+//winter wheat
+
+  var ww=cropb.mask(cropb.eq(24)).rename('wwf').divide(24).clip(hpa);
+
+var ks =ee.FeatureCollection('users/swei46/ksdat/ks'+ks_year[i])
+  .filter(ee.Filter.notNull(['irri']))
+  .reduceToImage({
+    properties: ['irri'],
+    reducer: ee.Reducer.first()
+}).reproject('epsg:4326',null,ptScale).rename('irri'+year[i]);
+
+/////////////////////////////////
+var etdat=etdat.addBands(mdet.rename('mdet'+year[i]))
+var temdat=temdat.addBands(tem.rename('tem'+year[i]))
+var vpdat=vpdat.addBands(vpd.rename('vpd'+year[i]))
+var prdat=prdat.addBands(pr.rename('pr'+year[i]))
+var gidat=gidat.addBands(gimean.rename('gi'+year[i]))
+var ndwidat=ndwidat.addBands(ndwimean.rename('ndwi'+year[i]))
+var ndvidat=ndvidat.addBands(ndvimean.rename('ndvi'+year[i]))
+var wwdat=wwdat.addBands(ww.rename('ww'+year[i]))
+var corndat=corndat.addBands(corn.rename('corn'+year[i]))
+var sbdat=sbdat.addBands(sb.rename('sb'+year[i]))
+var sghdat=sghdat.addBands(sgh.rename('sgh'+year[i]))
+var alffdat=alffdat.addBands(alff.rename('alff'+year[i]))
+var denisareadat=denisareadat.addBands(denisarea.rename('area'+year[i]))
+var irridat=irridat.addBands(ks)
+/////////////////////////
+
+}
+
+
+////////////////////////////////////////////////loopover, other variables extraction
+
+
+var giFeature = gidat.reduceRegions({
+  collection: grid,
+  reducer: ee.Reducer.mean(),
+  scale: 30,
+});
+
+Export.table.toDrive({
+  collection:giFeature ,
+  description: 'gimerged',
+  fileFormat: 'CSV'
+});
+
+var ndviFeature = ndvidat.reduceRegions({
+  collection: grid,
+  reducer: ee.Reducer.mean(),
+  scale: 30,
+});
+
+Export.table.toDrive({
+  collection:ndviFeature ,
+  description: 'ndvimerged',
+  fileFormat: 'CSV'
+});
+
+var ndwiFeature = ndwidat.reduceRegions({
+  collection: grid,
+  reducer: ee.Reducer.mean(),
+  scale: 30,
+});
+
+Export.table.toDrive({
+  collection:ndwiFeature ,
+  description: 'ndwimerged',
+  fileFormat: 'CSV'
+});
+
+var wwFeature = wwdat.reduceRegions({
+  collection: grid,
+  reducer: ee.Reducer.sum(),
+  scale: 30,
+});
+
+Export.table.toDrive({
+  collection:wwFeature ,
+  description: 'ww',
+  fileFormat: 'CSV'
+});
+
+var cornFeature = corndat.reduceRegions({
+  collection: grid,
+  reducer: ee.Reducer.sum(),
+  scale: 30,
+});
+
+Export.table.toDrive({
+  collection:cornFeature ,
+  description: 'corn',
+  fileFormat: 'CSV'
+});
+
+var sbFeature = sbdat.reduceRegions({
+  collection: grid,
+  reducer: ee.Reducer.sum(),
+  scale: 30,
+});
+
+Export.table.toDrive({
+  collection:sbFeature ,
+  description: 'sb',
+  fileFormat: 'CSV'
+});
+
+var alffFeature = alffdat.reduceRegions({
+  collection: grid,
+  reducer: ee.Reducer.sum(),
+  scale: 30,
+});
+
+Export.table.toDrive({
+  collection:alffFeature ,
+  description: 'alff',
+  fileFormat: 'CSV'
+});
+
+var sghFeature = sghdat.reduceRegions({
+  collection: grid,
+  reducer: ee.Reducer.sum(),
+  scale: 30,
+});
+
+Export.table.toDrive({
+  collection:sghFeature ,
+  description: 'sgh',
+  fileFormat: 'CSV'
+});
+//////////////////////////////////////
+var prFeature = prdat.reduceRegions({
+  collection: grid,
+  reducer: ee.Reducer.mean(),
+  scale: 4000,
+});
+
+Export.table.toDrive({
+  collection:prFeature ,
+  description: 'pr_mean_annual',
+  fileFormat: 'CSV'
+});
+
+var vpdFeature = vpdat.reduceRegions({
+  collection: grid,
+  reducer: ee.Reducer.sum(),
+  scale: 4000,
+});
+
+Export.table.toDrive({
+  collection:vpdFeature ,
+  description: 'vpd',
+  fileFormat: 'CSV'
+});
+//////////////////////////////
+var areaFeatures = denisareadat.reduceRegions({
+  collection: grid,
+  reducer: ee.Reducer.sum(),
+  scale: 30,
+});
+Export.table.toDrive({
+  collection:areaFeatures ,
+  description: 'area',
+  fileFormat: 'CSV'
+});
+
+/////////////////////////////////////////////
+var irriFeatures = irridat.reduceRegions({
+  collection: grid,
+  reducer: ee.Reducer.sum(),
+  scale: ptScale,
+});
+
+
+Export.table.toDrive({
+  collection:irriFeatures ,
+  description: 'irri',
+  fileFormat: 'CSV'
+});
+///////////////////
+
+var etFeatures = etdat.reduceRegions({
+  collection: grid,
+  reducer: ee.Reducer.sum(),
+  scale: 500,
+});
+Export.table.toDrive({
+  collection:etFeatures ,
+  description: 'et',
+  fileFormat: 'CSV'
+});
+////////////////////////////////
+
+
+
+var temFeatures = temdat.reduceRegions({
+  collection: grid,
+  reducer: ee.Reducer.mean(),
+  scale: 4000,
+});
+
+Export.table.toDrive({
+  collection:temFeatures ,
+  description: 'tem',
+  fileFormat: 'CSV'
+});
+////////////////////
+
+//////////////////////////////////////////////////////////////////
